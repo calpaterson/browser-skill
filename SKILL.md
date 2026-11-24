@@ -8,7 +8,7 @@ description: >
   for reading one page that plain HTTP could fetch, and do not attach to the
   user's own Chrome unless they explicitly ask for that.
 allowed-tools: Bash(playwright-cli:*)
-compatibility: Node 18+ and a Chromium downloaded by playwright-cli. Linux, macOS or Windows.
+compatibility: Node 18+ and a Chromium downloaded by playwright-cli. macOS and Linux; Windows via Git Bash or WSL (PowerShell is not supported).
 license: MIT
 ---
 
@@ -23,15 +23,40 @@ It is the same Chromium and the same engine as a Playwright script. The differen
 is that the browser outlives each command, so state (page, cookies, window) is
 still there on the next call.
 
+## Platforms
+
+macOS, Linux, and Windows. On Windows these commands need **Git Bash** (installed
+with Git for Windows) or **WSL**. Without Git Bash, Claude Code falls back to
+PowerShell, where the syntax below does not run: if the shell is PowerShell, stop
+and ask for Git for Windows or WSL instead of translating commands silently.
+
+From WSL on Windows 11 a headed window appears as a normal Windows window (WSLg).
+Inside a sandboxed desktop agent (for example Claude Cowork) there is no display:
+run headless, and confirm `node --version` and an installed Chromium before
+promising a result.
+
 ## Identity: one profile, always
 
 Never launch without a profile. Without one, the profile is in memory and every
 login and preference is gone when you close.
 
+Pick one directory and pass it literally on every run:
+
 ```bash
-export BP="$HOME/.local/share/browser/profile"   # or any private dir
-playwright-cli open https://example.com --browser chromium --profile "$BP" --headed
+mkdir -p "$HOME/.local/share/browser/profile"
+playwright-cli open https://example.com --browser chromium \
+  --profile "$HOME/.local/share/browser/profile" --headed
 ```
+
+| Shell | Profile directory |
+|---|---|
+| macOS, Linux, WSL | `$HOME/.local/share/browser/profile` |
+| Git Bash on Windows | `"$USERPROFILE/browser-profile"` |
+| PowerShell | `"$env:LOCALAPPDATA\browser\profile"` |
+
+Do not export the path into a variable: `export` does not exist outside POSIX
+shells, and an unset variable becomes an empty `--profile`, which silently falls
+back to the in-memory profile.
 
 - `--profile <dir>` is the durable identity: cookies, localStorage, preferences,
   extensions, history. Reuse the *same* directory every run.
@@ -44,12 +69,20 @@ playwright-cli open https://example.com --browser chromium --profile "$BP" --hea
 
 ## Where to run
 
-Launch from a scratch directory, never from the user's home directory:
+Launch from a scratch directory outside the home directory, never from home
+itself and never from a child of it you did not create for this purpose:
 
 ```bash
 mkdir -p /tmp/browser-work && cd /tmp/browser-work
-playwright-cli open https://example.com --browser chromium --profile "$BP" --headed
+playwright-cli open https://example.com --browser chromium \
+  --profile "$HOME/.local/share/browser/profile" --headed
 ```
+
+| Shell | Scratch directory |
+|---|---|
+| macOS, Linux, WSL | `/tmp/browser-work` |
+| Git Bash on Windows | `"$TEMP/browser-work"` |
+| PowerShell | `"$env:TEMP\browser-work"` |
 
 The working directory is the agent's permission scope. Standing in `$HOME` puts
 SSH keys, dotfiles, documents and browser profiles one relative path away, so a
@@ -60,6 +93,8 @@ launch from a directory the user did not name.
 
 Snapshots, console logs and videos go to `<cwd>/.playwright-cli/`, fixed at
 launch: whichever directory later commands run in, the files keep landing there.
+That is another reason to launch from a throwaway directory: the artefacts are
+disposable and should not accumulate in the user's home.
 
 ## First run
 
@@ -191,7 +226,7 @@ playwright-cli highlight e5
 When no command covers it, use the full Playwright API:
 
 ```bash
-playwright-cli run-code "async page => await page.setInputFiles('input[type=file]', '/tmp/a.pdf')"
+playwright-cli run-code "async page => await page.setInputFiles('input[type=file]', './a.pdf')"
 playwright-cli run-code --filename=script.js
 ```
 
@@ -214,8 +249,9 @@ playwright-cli run-code --filename=script.js
 - Do not use `networkidle` as a generic "page is ready" signal. Apps with
   WebSockets, polling or SSE never go idle.
 - **Artifacts follow the launch directory**, not the current one: a session
-  started from `/tmp` keeps writing to `/tmp/.playwright-cli/` even after you
-  `cd` elsewhere. The path is fixed at `open`, not at each command.
+  started from `/tmp/browser-work` keeps writing to
+  `/tmp/browser-work/.playwright-cli/` even after you `cd` elsewhere. The path is
+  fixed at `open`, not at each command.
 - `--idle-timeout` defaults to one hour for headless and never for headed. A long
   gap can therefore kill a headless session; the next command starts a new browser.
 
@@ -230,8 +266,11 @@ playwright-cli run-code --filename=script.js
   directory, and `attach` is only for a browser the user asked you to use.
 - After two or three failures of the same action, stop and report what you tried
   and the exact error. Do not loop.
-- Never run browser commands from the user's home directory; use a scratch
-  directory so the cwd grants nothing beyond a throwaway folder.
+- Never run browser commands with the home directory as the working directory,
+  and do not `cd ~` to get somewhere else. Use a throwaway scratch directory so
+  the cwd grants nothing beyond it.
+- If the shell is PowerShell or CMD, stop and say Git Bash or WSL is required.
+  Translating the commands by hand is how paths get mangled.
 - Close what you opened when the task is done, and leave the profile in place for
   the next run. If the user asked to see something, leave *that page* open
   instead of closing the window.
