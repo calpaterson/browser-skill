@@ -8,7 +8,7 @@ description: >
   for reading one page that plain HTTP could fetch, and do not attach to the
   user's own Chrome unless they explicitly ask for that.
 allowed-tools: Bash(playwright-cli:*)
-compatibility: Node 18+ and a Chromium downloaded by playwright-cli. macOS and Linux; Windows via Git Bash or WSL (PowerShell is not supported).
+compatibility: Node 18+ and a Chromium downloaded by playwright-cli. Linux, macOS or Windows (Git Bash, WSL or PowerShell).
 license: MIT
 ---
 
@@ -25,10 +25,16 @@ still there on the next call.
 
 ## Platforms
 
-macOS, Linux, and Windows. On Windows these commands need **Git Bash** (installed
-with Git for Windows) or **WSL**. Without Git Bash, Claude Code falls back to
-PowerShell, where the syntax below does not run: if the shell is PowerShell, stop
-and ask for Git for Windows or WSL instead of translating commands silently.
+macOS, Linux, and Windows. On Windows the commands run in **Git Bash**, **WSL**
+or **PowerShell**. `playwright-cli` itself is the same everywhere; only the
+shell syntax around it differs (variables, `mkdir -p`, path separators). In
+PowerShell use the PowerShell rows of the tables below, write
+`$env:NAME = "x"` rather than `export`, and chain with `;` rather than `&&`.
+
+If `node` or `npx` is "not recognized" but Node is installed through a version
+manager (fnm, nvm-windows, volta), activate it in the shell first, for example
+`fnm env --use-on-cd --shell powershell | Out-String | Invoke-Expression`, and
+suggest the user add that line to their shell profile.
 
 From WSL on Windows 11 a headed window appears as a normal Windows window (WSLg).
 Inside a sandboxed desktop agent (for example Claude Cowork) there is no display:
@@ -234,6 +240,12 @@ playwright-cli run-code --filename=script.js
 
 ## Verified gotchas
 
+- **Playwright's Chromium may not start on Windows.** `open` fails with
+  `spawn UNKNOWN`, and running `chrome.exe` directly reports a side-by-side
+  configuration error, even though the install completed. Retry with
+  `--browser msedge` (Edge ships with Windows) and a separate profile directory,
+  for example `...\browser\profile-edge`, since a profile is tied to one engine.
+
 - **Session cookies do not survive `close`.** A cookie set without `--expires` is
   a session cookie and is gone on reopen, even with `--profile`. Set an expiry, or
   re-login, or use `state-load`.
@@ -269,8 +281,8 @@ playwright-cli run-code --filename=script.js
 - Never run browser commands with the home directory as the working directory,
   and do not `cd ~` to get somewhere else. Use a throwaway scratch directory so
   the cwd grants nothing beyond it.
-- If the shell is PowerShell or CMD, stop and say Git Bash or WSL is required.
-  Translating the commands by hand is how paths get mangled.
+- In CMD, use PowerShell, Git Bash or WSL instead. In PowerShell, take paths from
+  the PowerShell rows of the tables above rather than translating by hand.
 - Close what you opened when the task is done, and leave the profile in place for
   the next run. If the user asked to see something, leave *that page* open
   instead of closing the window.
